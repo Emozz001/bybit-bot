@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     func,
+    text,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -181,10 +182,11 @@ class DatabaseManager:
             
             # Optimize SQLite for performance
             with self.engine.connect() as conn:
-                conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
-                conn.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, safer than OFF
-                conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
-                conn.execute("PRAGMA temp_store=MEMORY")  # Store temp tables in memory
+                conn.execute(text("PRAGMA journal_mode=WAL"))  # Write-Ahead Logging for better concurrency
+                conn.execute(text("PRAGMA synchronous=NORMAL"))  # Faster than FULL, safer than OFF
+                conn.execute(text("PRAGMA cache_size=-64000"))  # 64MB cache
+                conn.execute(text("PRAGMA temp_store=MEMORY"))  # Store temp tables in memory
+                conn.commit()
             
             # Create tables
             Base.metadata.create_all(bind=self.engine)
