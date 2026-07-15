@@ -1,12 +1,9 @@
 #!/bin/bash
 
-# =============================================================================
-# Bybit AI Trader - Management Script
-# =============================================================================
-# Usage: ./bybit_trader.sh [install|run|uninstall|update|status|help]
-# =============================================================================
+# Bybit AI Trader - Interactive Management Script
+# Run this script and select options by number
 
-set -e  # Exit on error
+set -e
 
 # Colors for output
 RED='\033[0;31m'
@@ -15,542 +12,362 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
-BOLD='\033[1m'
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Configuration
-VENV_DIR="venv"
-PYTHON_CMD="python3"
-PIP_CMD="pip3"
-ENV_FILE=".env"
-ENV_TEMPLATE=".env.example"
-CONFIG_DIR="config"
-SETTINGS_FILE="$CONFIG_DIR/settings.yaml"
-LOGS_DIR="logs"
-DB_DIR="database"
-DB_FILE="$DB_DIR/trading.db"
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
+# Function to print colored output
 print_header() {
-    echo -e "${CYAN}${BOLD}"
-    echo "╔═══════════════════════════════════════════════════════════╗"
-    echo "║           Bybit AI Trader - Management Tool               ║"
-    echo "╚═══════════════════════════════════════════════════════════╝"
+    echo -e "${CYAN}"
+    echo "========================================"
+    echo "   Bybit AI Trader - Management Menu"
+    echo "========================================"
     echo -e "${NC}"
 }
 
-print_section() {
-    echo -e "\n${BLUE}${BOLD}▶ $1${NC}\n"
+print_option() {
+    echo -e "${BLUE}[${1}]${NC} ${2}"
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}✓ ${1}${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}⚠ ${1}${NC}"
 }
 
 print_error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}✗ ${1}${NC}"
 }
 
-print_info() {
-    echo -e "${CYAN}ℹ $1${NC}"
-}
-
+# Check if Python is installed
 check_python() {
-    if ! command -v $PYTHON_CMD &> /dev/null; then
-        print_error "Python 3.12+ not found. Please install Python 3.12 or later."
-        echo "Download from: https://www.python.org/downloads/"
-        exit 1
-    fi
-    
-    PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    REQUIRED_VERSION="3.12"
-    
-    if [[ $(echo "$PYTHON_VERSION < $REQUIRED_VERSION" | bc) == 1 ]]; then
-        print_error "Python 3.12+ required. Found: $PYTHON_VERSION"
-        exit 1
-    fi
-    
-    print_success "Python $PYTHON_VERSION detected"
-}
-
-check_venv() {
-    if [ ! -d "$VENV_DIR" ]; then
+    if command -v python3 &> /dev/null; then
+        PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
+        return 0
+    else
         return 1
     fi
-    return 0
 }
 
-activate_venv() {
-    if check_venv; then
-        source "$VENV_DIR/bin/activate"
-        print_success "Virtual environment activated"
+# Check if virtual environment exists
+check_venv() {
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        return 0
     else
-        print_error "Virtual environment not found. Run './bybit_trader.sh install' first."
-        exit 1
+        return 1
     fi
 }
 
-# =============================================================================
-# Install Command
-# =============================================================================
-
-do_install() {
-    print_header
-    print_section "Installing Bybit AI Trader"
-    
-    # Check Python
-    print_info "Checking Python version..."
-    check_python
-    
-    # Create virtual environment
-    if check_venv; then
-        print_warning "Virtual environment already exists. Skipping creation."
+# Check if .env file exists
+check_env() {
+    if [ -f ".env" ]; then
+        return 0
     else
-        print_info "Creating virtual environment..."
-        $PYTHON_CMD -m venv $VENV_DIR
+        return 1
+    fi
+}
+
+# Install function
+do_install() {
+    echo ""
+    print_header
+    echo ""
+    
+    # Step 1: Check Python
+    print_option "1" "Checking Python installation..."
+    if check_python; then
+        print_success "Python $PYTHON_VERSION found"
+    else
+        print_error "Python 3.12+ not found!"
+        echo "Please install Python 3.12 or later from https://www.python.org/downloads/"
+        exit 1
+    fi
+    
+    # Step 2: Create virtual environment
+    print_option "2" "Creating virtual environment..."
+    if check_venv; then
+        print_warning "Virtual environment already exists, skipping..."
+    else
+        python3 -m venv venv
         print_success "Virtual environment created"
     fi
     
-    # Activate virtual environment
-    activate_venv
+    # Step 3: Activate virtual environment
+    print_option "3" "Activating virtual environment..."
+    source venv/bin/activate
+    print_success "Virtual environment activated"
     
-    # Upgrade pip
-    print_info "Upgrading pip..."
+    # Step 4: Upgrade pip
+    print_option "4" "Upgrading pip..."
     pip install --upgrade pip --quiet
+    print_success "Pip upgraded"
     
-    # Install dependencies
-    print_info "Installing dependencies (this may take a few minutes)..."
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt --quiet
-        print_success "Dependencies installed"
+    # Step 5: Install dependencies
+    print_option "5" "Installing dependencies (this may take a few minutes)..."
+    pip install -r requirements.txt --quiet
+    print_success "All dependencies installed"
+    
+    # Step 6: Create .env file
+    print_option "6" "Setting up configuration files..."
+    if check_env; then
+        print_warning ".env file already exists, skipping..."
     else
-        print_error "requirements.txt not found!"
-        exit 1
+        cp .env.example .env
+        print_success ".env file created from template"
     fi
     
-    # Create .env file
-    if [ ! -f "$ENV_FILE" ]; then
-        print_info "Creating $ENV_FILE from template..."
-        if [ -f "$ENV_TEMPLATE" ]; then
-            cp "$ENV_TEMPLATE" "$ENV_FILE"
-            print_success "$ENV_FILE created"
-            print_warning "Please edit $ENV_FILE with your API credentials before running!"
-        else
-            print_error "$ENV_TEMPLATE not found!"
-            exit 1
-        fi
-    else
-        print_warning "$ENV_FILE already exists. Skipping creation."
+    # Step 7: Create config directory and settings
+    if [ ! -d "config" ]; then
+        mkdir -p config
     fi
-    
-    # Create config directory and settings
-    if [ ! -d "$CONFIG_DIR" ]; then
-        print_info "Creating config directory..."
-        mkdir -p "$CONFIG_DIR"
+    if [ ! -f "config/settings.yaml" ]; then
+        cp config/settings.yaml.example config/settings.yaml 2>/dev/null || echo "# Settings will be loaded from .env" > config/settings.yaml
     fi
+    print_success "Config directory setup complete"
     
-    if [ ! -f "$SETTINGS_FILE" ]; then
-        print_info "Creating default settings.yaml..."
-        cat > "$SETTINGS_FILE" << 'EOF'
-# Bybit AI Trader Configuration
-# Do not store API keys here - use .env file instead
-
-trading:
-  mode: "paper"  # paper or live
-  enabled: true
-  max_positions: 5
-  max_leverage: 10
-  
-risk:
-  risk_per_trade: 1.0  # Percentage of balance
-  daily_loss_limit: 5.0  # Percentage
-  weekly_loss_limit: 10.0  # Percentage
-  monthly_loss_limit: 20.0  # Percentage
-  min_risk_reward: 2.0  # Minimum R:R ratio
-  
-scanner:
-  enabled: true
-  scan_interval: 5  # Seconds
-  opportunity_threshold: 90  # Minimum score (0-100)
-  
-timeframes:
-  - "1m"
-  - "3m"
-  - "5m"
-  - "15m"
-  - "30m"
-  - "1h"
-  - "4h"
-  - "1d"
-
-indicators:
-  ema_periods: [20, 50, 100, 200]
-  rsi_period: 14
-  atr_period: 14
-  adx_period: 14
-  
-dashboard:
-  refresh_rate: 1.0  # Seconds
-  show_all_symbols: false
-  top_opportunities: 10
-  
-logging:
-  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
-  save_to_file: true
-  rotation_mb: 10
-  backup_count: 5
-  
-telegram:
-  enabled: false
-  # Add token and chat_id in .env file
-EOF
-        print_success "settings.yaml created"
-    else
-        print_warning "settings.yaml already exists. Skipping creation."
-    fi
+    # Step 8: Create necessary directories
+    mkdir -p logs database cache
+    print_success "Directory structure created"
     
-    # Create directories
-    print_info "Creating necessary directories..."
-    mkdir -p "$LOGS_DIR"
-    mkdir -p "$DB_DIR"
-    print_success "Directories created"
-    
-    # Initialize database
-    print_info "Initializing database..."
-    python -c "from database.manager import DatabaseManager; db = DatabaseManager(); db.initialize()" 2>/dev/null || print_warning "Database initialization skipped (will initialize on first run)"
-    
-    # Create run script
-    print_info "Creating run script..."
-    cat > "run.sh" << 'EOF'
-#!/bin/bash
-source venv/bin/activate
-python main.py
-EOF
-    chmod +x run.sh
-    print_success "Run script created"
+    # Step 9: Initialize database
+    print_option "7" "Initializing database..."
+    python3 -c "
+import sys
+sys.path.insert(0, '.')
+try:
+    from database.manager import DatabaseManager
+    import asyncio
+    asyncio.run(DatabaseManager().initialize())
+    print('Database initialized successfully')
+except Exception as e:
+    print(f'Database initialization skipped: {e}')
+" 2>/dev/null || print_warning "Database will be initialized on first run"
     
     echo ""
     print_success "Installation completed successfully!"
     echo ""
-    print_section "Next Steps"
-    echo "1. Edit $ENV_FILE with your Bybit API credentials:"
-    echo "   nano $ENV_FILE"
-    echo ""
-    echo "2. Review and customize $SETTINGS_FILE if needed:"
-    echo "   nano $SETTINGS_FILE"
-    echo ""
-    echo "3. Run the bot:"
-    echo "   ./bybit_trader.sh run"
-    echo "   or"
-    echo "   ./run.sh"
-    echo ""
-    print_warning "Remember: The bot defaults to PAPER TRADING mode for safety!"
+    print_warning "IMPORTANT: Edit the .env file with your API credentials before running!"
+    echo "Run: nano .env  (or use your preferred text editor)"
     echo ""
 }
 
-# =============================================================================
-# Run Command
-# =============================================================================
-
+# Run function
 do_run() {
+    echo ""
     print_header
-    print_section "Starting Bybit AI Trader"
+    echo ""
     
     # Check if installed
     if ! check_venv; then
-        print_error "Bot not installed. Run './bybit_trader.sh install' first."
-        exit 1
-    fi
-    
-    # Check .env file
-    if [ ! -f "$ENV_FILE" ]; then
-        print_error "$ENV_FILE not found. Run './bybit_trader.sh install' first."
-        exit 1
-    fi
-    
-    # Check if API keys are set
-    if grep -q "YOUR_BYBIT_API_KEY_HERE" "$ENV_FILE" || grep -q "YOUR_BYBIT_SECRET_KEY_HERE" "$ENV_FILE"; then
-        print_warning "API keys not configured in $ENV_FILE"
-        print_info "The bot will run in offline mode or exit if API is required."
+        print_error "Virtual environment not found!"
+        print_warning "Please run option 1 (Install) first."
         echo ""
-        read -p "Continue anyway? (y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Please edit $ENV_FILE with your API credentials."
-            exit 0
-        fi
+        return
     fi
     
-    # Activate and run
-    activate_venv
+    if ! check_env; then
+        print_error ".env file not found!"
+        print_warning "Please run option 1 (Install) first."
+        echo ""
+        return
+    fi
     
-    print_info "Starting trading bot..."
-    print_info "Press Ctrl+C to stop"
+    # Activate virtual environment
+    source venv/bin/activate
+    
+    print_success "Starting Bybit AI Trader..."
+    echo ""
+    echo "Press Ctrl+C to stop the bot"
     echo ""
     
-    python main.py
+    # Run the bot
+    python3 main.py
 }
 
-# =============================================================================
-# Uninstall Command
-# =============================================================================
-
+# Uninstall function
 do_uninstall() {
+    echo ""
     print_header
-    print_section "Uninstalling Bybit AI Trader"
+    echo ""
     
     print_warning "This will remove:"
-    echo "  - Virtual environment ($VENV_DIR)"
-    echo "  - Installed packages"
-    echo "  - Log files ($LOGS_DIR)"
-    echo "  - Database ($DB_FILE)"
+    echo "  - Virtual environment (venv/)"
+    echo "  - Log files (logs/)"
+    echo "  - Database files (database/)"
+    echo "  - Cache files (cache/)"
     echo ""
     echo "This will NOT remove:"
-    echo "  - Configuration files ($ENV_FILE, $SETTINGS_FILE)"
+    echo "  - Configuration files (.env, config/)"
     echo "  - Source code"
+    echo "  - Requirements.txt"
     echo ""
     
-    read -p "Are you sure you want to uninstall? (y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Uninstallation cancelled."
-        exit 0
+    read -p "Are you sure you want to uninstall? (y/n): " confirm
+    if [[ $confirm != [yY] && $confirm != [yY][eE][sS] ]]; then
+        print_warning "Uninstall cancelled"
+        return
     fi
     
-    # Remove virtual environment
-    if check_venv; then
-        print_info "Removing virtual environment..."
-        rm -rf "$VENV_DIR"
-        print_success "Virtual environment removed"
-    else
-        print_warning "Virtual environment not found. Skipping."
-    fi
+    print_option "1" "Removing virtual environment..."
+    rm -rf venv
+    print_success "Virtual environment removed"
     
-    # Remove logs
-    if [ -d "$LOGS_DIR" ]; then
-        print_info "Removing log files..."
-        rm -rf "$LOGS_DIR"/*
-        print_success "Log files removed"
-    fi
+    print_option "2" "Removing log files..."
+    rm -rf logs/*
+    print_success "Log files removed"
     
-    # Remove database
-    if [ -f "$DB_FILE" ]; then
-        print_info "Removing database..."
-        rm -f "$DB_FILE"
-        print_success "Database removed"
-    fi
+    print_option "3" "Removing database files..."
+    rm -rf database/*
+    print_success "Database files removed"
     
-    # Remove run script
-    if [ -f "run.sh" ]; then
-        rm -f run.sh
-        print_success "Run script removed"
-    fi
+    print_option "4" "Removing cache files..."
+    rm -rf cache/*
+    print_success "Cache files removed"
     
     echo ""
     print_success "Uninstallation completed!"
     echo ""
-    print_info "Your configuration files have been preserved:"
-    echo "  - $ENV_FILE"
-    echo "  - $SETTINGS_FILE"
-    echo ""
-    print_info "To reinstall, run: ./bybit_trader.sh install"
+    print_warning "Your configuration files (.env, config/) have been preserved."
+    echo "To reinstall, run this script again and select option 1."
     echo ""
 }
 
-# =============================================================================
-# Update Command
-# =============================================================================
-
+# Update function
 do_update() {
+    echo ""
     print_header
-    print_section "Updating Bybit AI Trader"
+    echo ""
     
     # Check if installed
     if ! check_venv; then
-        print_error "Bot not installed. Run './bybit_trader.sh install' first."
-        exit 1
+        print_error "Virtual environment not found!"
+        print_warning "Please run option 1 (Install) first."
+        echo ""
+        return
     fi
     
-    activate_venv
+    # Activate virtual environment
+    source venv/bin/activate
     
-    # Update pip
-    print_info "Upgrading pip..."
+    print_option "1" "Updating pip..."
     pip install --upgrade pip --quiet
+    print_success "Pip updated"
     
-    # Update dependencies
-    print_info "Updating dependencies..."
-    if [ -f "requirements.txt" ]; then
-        pip install -r requirements.txt --upgrade --quiet
-        print_success "Dependencies updated"
-    else
-        print_error "requirements.txt not found!"
-        exit 1
-    fi
-    
-    # Check for new .env variables
-    if [ -f "$ENV_FILE" ] && [ -f "$ENV_TEMPLATE" ]; then
-        print_info "Checking for new configuration options..."
-        # Compare and notify about new variables (simplified check)
-        NEW_VARS=$(diff <(grep "=" "$ENV_TEMPLATE" | cut -d= -f1 | sort) <(grep "=" "$ENV_FILE" | cut -d= -f1 | sort) | grep "^>" | cut -c3- || true)
-        if [ -n "$NEW_VARS" ]; then
-            print_warning "New configuration variables available:"
-            echo "$NEW_VARS"
-            print_info "Consider updating your $ENV_FILE file"
-        fi
-    fi
+    print_option "2" "Updating all dependencies..."
+    pip install --upgrade -r requirements.txt --quiet
+    print_success "All dependencies updated"
     
     echo ""
     print_success "Update completed successfully!"
     echo ""
-    print_info "You can now run the bot with: ./bybit_trader.sh run"
-    echo ""
 }
 
-# =============================================================================
-# Status Command
-# =============================================================================
-
+# Status function
 do_status() {
+    echo ""
     print_header
-    print_section "System Status"
+    echo ""
+    
+    print_option "-" "System Status"
+    echo ""
     
     # Python version
-    if command -v $PYTHON_CMD &> /dev/null; then
-        PYTHON_VERSION=$($PYTHON_CMD -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')
+    if check_python; then
         print_success "Python: $PYTHON_VERSION"
     else
-        print_error "Python: Not found"
+        print_error "Python: Not installed"
     fi
     
     # Virtual environment
     if check_venv; then
-        print_success "Virtual Environment: Active"
-        
-        # Check if some key packages are installed
-        if source "$VENV_DIR/bin/activate" && python -c "import pybit" 2>/dev/null; then
-            print_success "Key packages: Installed"
-        else
-            print_warning "Key packages: Missing or incomplete"
-        fi
+        print_success "Virtual Environment: Installed"
     else
-        print_error "Virtual Environment: Not found"
+        print_error "Virtual Environment: Not installed"
     fi
     
-    # Configuration files
-    if [ -f "$ENV_FILE" ]; then
-        print_success "Environment File: Present"
-        # Check if API keys are configured
-        if grep -q "YOUR_BYBIT_API_KEY_HERE" "$ENV_FILE"; then
-            print_warning "API Keys: Not configured"
-        else
-            print_success "API Keys: Configured"
-        fi
+    # .env file
+    if check_env; then
+        print_success "Configuration: .env file exists"
     else
-        print_error "Environment File: Missing"
+        print_error "Configuration: .env file missing"
     fi
     
-    if [ -f "$SETTINGS_FILE" ]; then
-        print_success "Settings File: Present"
+    # Config directory
+    if [ -d "config" ] && [ -f "config/settings.yaml" ]; then
+        print_success "Config: settings.yaml exists"
     else
-        print_warning "Settings File: Missing"
+        print_warning "Config: settings.yaml missing (will use .env defaults)"
     fi
     
     # Directories
-    if [ -d "$LOGS_DIR" ]; then
-        LOG_COUNT=$(find "$LOGS_DIR" -name "*.log" 2>/dev/null | wc -l)
-        print_success "Logs Directory: Present ($LOG_COUNT log files)"
-    else
-        print_info "Logs Directory: Not created yet"
-    fi
-    
-    if [ -f "$DB_FILE" ]; then
-        print_success "Database: Initialized"
-    else
-        print_info "Database: Not initialized yet"
-    fi
-    
-    # Run script
-    if [ -f "run.sh" ]; then
-        print_success "Run Script: Present"
-    else
-        print_info "Run Script: Not created yet"
-    fi
+    for dir in logs database cache; do
+        if [ -d "$dir" ]; then
+            print_success "Directory: $dir/ exists"
+        else
+            print_warning "Directory: $dir/ missing"
+        fi
+    done
     
     echo ""
 }
 
-# =============================================================================
-# Help Command
-# =============================================================================
-
-do_help() {
+# Main menu loop
+show_menu() {
+    clear
     print_header
-    echo "Usage: ./bybit_trader.sh [COMMAND]"
     echo ""
-    echo "Commands:"
-    echo "  install    - Install all dependencies and set up the environment"
-    echo "  run        - Start the trading bot"
-    echo "  uninstall  - Remove virtual environment, logs, and database"
-    echo "  update     - Update dependencies to latest versions"
-    echo "  status     - Show current system status"
-    echo "  help       - Show this help message"
+    print_option "1" "Install / Setup System"
+    print_option "2" "Run Trading Bot"
+    print_option "3" "Uninstall (remove venv, logs, database)"
+    print_option "4" "Update Dependencies"
+    print_option "5" "Check Status"
+    print_option "6" "Exit"
     echo ""
-    echo "Examples:"
-    echo "  ./bybit_trader.sh install    # First-time setup"
-    echo "  ./bybit_trader.sh run        # Start the bot"
-    echo "  ./bybit_trader.sh status     # Check installation status"
-    echo "  ./bybit_trader.sh update     # Update packages"
-    echo "  ./bybit_trader.sh uninstall  # Clean installation"
-    echo ""
-    echo "Quick Start:"
-    echo "  1. ./bybit_trader.sh install"
-    echo "  2. Edit .env with your API credentials"
-    echo "  3. ./bybit_trader.sh run"
-    echo ""
+    echo "========================================"
 }
 
-# =============================================================================
-# Main Entry Point
-# =============================================================================
-
-if [ $# -eq 0 ]; then
-    do_help
-    exit 0
-fi
-
-case "$1" in
-    install)
-        do_install
-        ;;
-    run)
-        do_run
-        ;;
-    uninstall)
-        do_uninstall
-        ;;
-    update)
-        do_update
-        ;;
-    status)
-        do_status
-        ;;
-    help|--help|-h)
-        do_help
-        ;;
-    *)
-        print_error "Unknown command: $1"
-        echo ""
-        do_help
-        exit 1
-        ;;
-esac
+# Main execution
+while true; do
+    show_menu
+    read -p "Enter your choice [1-6]: " choice
+    
+    case $choice in
+        1)
+            do_install
+            echo "Press Enter to continue..."
+            read
+            ;;
+        2)
+            do_run
+            ;;
+        3)
+            do_uninstall
+            echo "Press Enter to continue..."
+            read
+            ;;
+        4)
+            do_update
+            echo "Press Enter to continue..."
+            read
+            ;;
+        5)
+            do_status
+            echo "Press Enter to continue..."
+            read
+            ;;
+        6)
+            echo ""
+            print_success "Goodbye!"
+            echo ""
+            exit 0
+            ;;
+        *)
+            print_error "Invalid option. Please enter a number between 1 and 6."
+            echo "Press Enter to continue..."
+            read
+            ;;
+    esac
+done
