@@ -3,6 +3,7 @@
 Provides risk calculation, position sizing, and circuit breaker functionality.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,15 +32,16 @@ class RiskManager:
     and monitors portfolio exposure.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         """
         Initialize risk manager.
         
         Args:
             config: Configuration object with risk settings
+            logger: Logger instance for logging messages
         """
         self.config = config
-        self.logger = None
+        self.logger = logger or logging.getLogger("bybit_trader.risk")
         
         # Risk state
         self._daily_pnl = 0.0

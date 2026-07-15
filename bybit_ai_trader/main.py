@@ -47,7 +47,7 @@ class TradingBot:
             self.logger.info("Database initialized")
             
             # Initialize exchange connection
-            self.exchange = BybitClient(self.config)
+            self.exchange = BybitClient(self.config, self.logger)
             connected = await self.exchange.connect()
             if not connected:
                 self.logger.error("Failed to connect to Bybit API")
@@ -64,15 +64,15 @@ class TradingBot:
             self.logger.info(f"Loaded {len(markets)} futures markets")
             
             # Initialize scanner
-            self.scanner = MarketScanner(self.config, self.exchange, self.db_manager)
+            self.scanner = MarketScanner(self.config, self.exchange, self.db_manager, self.logger)
             self.logger.info("Market scanner initialized")
             
             # Initialize position manager
-            self.position_manager = PositionManager(self.config, self.exchange, self.db_manager)
+            self.position_manager = PositionManager(self.config, self.exchange, self.db_manager, self.logger)
             self.logger.info("Position manager initialized")
             
             # Initialize dashboard
-            self.dashboard = Dashboard(self.config, self.exchange, self.scanner, self.position_manager)
+            self.dashboard = Dashboard(self.config, self.exchange, self.scanner, self.position_manager, self.logger)
             self.logger.info("Dashboard initialized")
             
             self.logger.info("Initialization complete")
@@ -153,7 +153,9 @@ class TradingBot:
     def handle_signal(self, sig):
         """Handle shutdown signals."""
         self.logger.info(f"Received signal {sig}")
-        asyncio.create_task(self.shutdown())
+        # Create task and track it to prevent fire-and-forget
+        shutdown_task = asyncio.create_task(self.shutdown())
+        self._tasks.append(shutdown_task)
 
 
 async def main():

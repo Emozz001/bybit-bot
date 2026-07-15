@@ -6,6 +6,7 @@ collects market data, and identifies trading opportunities.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -21,7 +22,7 @@ class MarketScanner:
     and assigns opportunity scores.
     """
 
-    def __init__(self, config, exchange, db_manager):
+    def __init__(self, config, db_manager, logger=None):
         """
         Initialize market scanner.
         
@@ -29,11 +30,12 @@ class MarketScanner:
             config: Configuration object
             exchange: BybitClient instance
             db_manager: DatabaseManager instance
+            logger: Logger instance for logging messages
         """
         self.config = config
         self.exchange = exchange
         self.db_manager = db_manager
-        self.logger = None  # Will be set by main bot
+        self.logger = logger or logging.getLogger("bybit_trader.scanner")
         
         # Scanner state
         self._running = False

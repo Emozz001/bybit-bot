@@ -6,6 +6,7 @@ Displays account info, positions, opportunities, and system status.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 
 from rich.console import Console
@@ -22,7 +23,7 @@ class Dashboard:
     Uses Rich library for beautiful terminal output.
     """
 
-    def __init__(self, config, exchange, scanner, position_manager):
+    def __init__(self, config, exchange, scanner, position_manager, logger=None):
         """
         Initialize dashboard.
         
@@ -31,12 +32,13 @@ class Dashboard:
             exchange: BybitClient instance
             scanner: MarketScanner instance
             position_manager: PositionManager instance
+            logger: Logger instance for logging messages
         """
         self.config = config
         self.exchange = exchange
         self.scanner = scanner
         self.position_manager = position_manager
-        self.logger = None  # Will be set by main bot
+        self.logger = logger or logging.getLogger("bybit_trader.dashboard")
         
         # Dashboard state
         self._running = False
@@ -61,19 +63,12 @@ class Dashboard:
         
         while self._running:
             try:
-                # Update data and render in parallel
-                update_task = asyncio.create_task(self._update_data())
-                
-                # Small delay to allow data update to progress
-                await asyncio.sleep(0.1)
-                
+                # Update data first, then render (proper sequencing)
+                await self._update_data()
                 self._render()
                 
-                # Wait for update to complete
-                await update_task
-                
-                # Sleep for remaining refresh interval
-                await asyncio.sleep(max(0, self._refresh_rate - 0.1))
+                # Sleep for refresh interval
+                await asyncio.sleep(self._refresh_rate)
                 
             except asyncio.CancelledError:
                 break

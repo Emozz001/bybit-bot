@@ -6,6 +6,7 @@ Implements rate limiting, retry logic, and automatic reconnection.
 """
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -21,15 +22,16 @@ class BybitClient:
     MAX_RECONNECT_ATTEMPTS = 5
     CACHE_TTL_SECONDS = 5  # Cache expiration time
 
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         """
         Initialize Bybit client.
         
         Args:
             config: Configuration object with exchange settings
+            logger: Logger instance for logging messages
         """
         self.config = config
-        self.logger = None  # Will be set by main bot
+        self.logger = logger or logging.getLogger("bybit_trader.bybit_client")
         self.testnet = config.exchange.testnet
         self.api_key = config.exchange.api_key
         self.api_secret = config.exchange.api_secret
