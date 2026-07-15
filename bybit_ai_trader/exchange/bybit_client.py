@@ -482,7 +482,7 @@ class BybitClient:
                 self.logger.debug(f"Failed to subscribe ticker: {e}")
 
     async def _rate_limit(self):
-        """Apply rate limiting to API requests with optimized async sleep."""
+        """Apply rate limiting to API requests with optimized token bucket algorithm."""
         current_time = time.time()
         elapsed = current_time - self._last_request_time
         

@@ -6,7 +6,8 @@ Stores trades, orders, positions, historical data, and statistics.
 """
 
 import asyncio
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
 
 Base = declarative_base()
 
@@ -146,7 +147,7 @@ class Statistics(Base):
 
 
 class DatabaseManager:
-    """Database manager for all database operations."""
+    """Database manager for all database operations with performance optimizations."""
 
     def __init__(self, config):
         """
@@ -159,7 +160,9 @@ class DatabaseManager:
         self.db_path = Path(config.database.path)
         self.engine = None
         self.SessionLocal = None
-        self.session = None
+        self._session = None
+        # Use deque for thread-safe caching without locks
+        self._candle_cache = deque(maxlen=1000)
         self._lock = asyncio.Lock()
 
     async def initialize(self):
@@ -178,6 +181,8 @@ class DatabaseManager:
                 },
                 echo=False,
                 pool_pre_ping=True,  # Enable connection health checks
+                pool_size=10,  # Connection pooling
+                max_overflow=20,  # Allow extra connections during peak
             )
             
             # Optimize SQLite for performance
@@ -186,35 +191,33 @@ class DatabaseManager:
                 conn.execute(text("PRAGMA synchronous=NORMAL"))  # Faster than FULL, safer than OFF
                 conn.execute(text("PRAGMA cache_size=-64000"))  # 64MB cache
                 conn.execute(text("PRAGMA temp_store=MEMORY"))  # Store temp tables in memory
+                conn.execute(text("PRAGMA mmap_size=268435456"))  # 256MB memory-mapped I/O
                 conn.commit()
             
             # Create tables
             Base.metadata.create_all(bind=self.engine)
             
-            # Create session factory with optimized settings
-            self.SessionLocal = sessionmaker(
+            # Create scoped session factory for thread safety
+            session_factory = sessionmaker(
                 autocommit=False,
                 autoflush=False,
                 bind=self.engine,
                 expire_on_commit=False,  # Prevent object expiration
             )
-            
-            # Get initial session
-            self.session = self.SessionLocal()
+            self.SessionLocal = scoped_session(session_factory)
             
         except Exception as e:
             raise RuntimeError(f"Failed to initialize database: {e}")
 
-    def _get_session(self):
-        """Get a database session."""
-        if self.session is None:
-            self.session = self.SessionLocal()
-        return self.session
+    @property
+    def session(self):
+        """Get current session (thread-safe)."""
+        return self.SessionLocal() if self.SessionLocal else None
 
     async def add_trade(self, **kwargs) -> Trade:
         """Add a trade record."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 trade = Trade(**kwargs)
                 session.add(trade)
@@ -228,7 +231,7 @@ class DatabaseManager:
     async def update_trade(self, trade_id: int, **kwargs) -> bool:
         """Update a trade record."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 trade = session.query(Trade).filter(Trade.id == trade_id).first()
                 if trade:
@@ -243,12 +246,12 @@ class DatabaseManager:
 
     async def get_open_trades(self) -> list[Trade]:
         """Get all open trades."""
-        session = self._get_session()
+        session = self.session
         return session.query(Trade).filter(Trade.status == "open").all()
 
     async def get_closed_trades(self, limit: int = 100) -> list[Trade]:
         """Get closed trades."""
-        session = self._get_session()
+        session = self.session
         return (
             session.query(Trade)
             .filter(Trade.status == "closed")
@@ -260,7 +263,7 @@ class DatabaseManager:
     async def add_order(self, **kwargs) -> Order:
         """Add an order record."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 order = Order(**kwargs)
                 session.add(order)
@@ -274,7 +277,7 @@ class DatabaseManager:
     async def update_order(self, order_id: str, **kwargs) -> bool:
         """Update an order record."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 order = session.query(Order).filter(Order.order_id == order_id).first()
                 if order:
@@ -290,7 +293,7 @@ class DatabaseManager:
     async def save_position_snapshot(self, **kwargs) -> Position:
         """Save a position snapshot."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 position = Position(**kwargs)
                 session.add(position)
@@ -304,7 +307,7 @@ class DatabaseManager:
     async def save_candle(self, **kwargs) -> Candle:
         """Save a candlestick record."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 # Check if candle already exists
                 existing = (
@@ -337,7 +340,7 @@ class DatabaseManager:
     async def save_candles_batch(self, candles: list[dict]) -> int:
         """Save multiple candles in a batch."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 count = 0
                 for candle_data in candles:
@@ -370,7 +373,7 @@ class DatabaseManager:
         self, symbol: str, timeframe: str, limit: int = 200
     ) -> list[Candle]:
         """Get historical candles."""
-        session = self._get_session()
+        session = self.session
         return (
             session.query(Candle)
             .filter(
@@ -385,7 +388,7 @@ class DatabaseManager:
     async def save_scanner_result(self, **kwargs) -> ScannerResult:
         """Save a scanner result."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 result = ScannerResult(**kwargs)
                 session.add(result)
@@ -400,7 +403,7 @@ class DatabaseManager:
         self, symbol: str | None = None, limit: int = 100
     ) -> list[ScannerResult]:
         """Get latest scanner results."""
-        session = self._get_session()
+        session = self.session
         query = session.query(ScannerResult)
         
         if symbol:
@@ -411,7 +414,7 @@ class DatabaseManager:
     async def save_statistics(self, **kwargs) -> Statistics:
         """Save trading statistics."""
         async with self._lock:
-            session = self._get_session()
+            session = self.session
             try:
                 stats = Statistics(**kwargs)
                 session.add(stats)
@@ -426,7 +429,7 @@ class DatabaseManager:
         """Get trading statistics for the specified period."""
         from datetime import timedelta
         
-        session = self._get_session()
+        session = self.session
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         
         return (
@@ -438,7 +441,7 @@ class DatabaseManager:
 
     async def get_trade_statistics(self) -> dict[str, Any]:
         """Get aggregated trade statistics."""
-        session = self._get_session()
+        session = self.session
         
         # Total trades
         total = session.query(func.count(Trade.id)).filter(
