@@ -23,6 +23,28 @@ A professional, production-quality cryptocurrency futures trading bot for Bybit 
 
 ## Installation
 
+### Quick Install (Recommended)
+
+Run the automated installation script:
+
+```bash
+cd bybit_ai_trader
+chmod +x install.sh
+./install.sh
+```
+
+The script will:
+- Check Python version (requires 3.12+)
+- Create a virtual environment
+- Install all dependencies
+- Set up configuration files
+- Initialize the database
+- Create a convenient run script
+
+### Manual Installation
+
+If you prefer to install manually:
+
 1. Clone the repository:
 ```bash
 cd bybit_ai_trader
@@ -48,6 +70,11 @@ cp .env.example .env
 5. Run the bot:
 ```bash
 python main.py
+```
+
+Or use the convenience script created by install.sh:
+```bash
+./run.sh
 ```
 
 ## Configuration
