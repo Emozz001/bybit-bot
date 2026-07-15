@@ -162,27 +162,39 @@ class DatabaseManager:
         self._lock = asyncio.Lock()
 
     async def initialize(self):
-        """Initialize database connection and create tables."""
+        """Initialize database connection and create tables with optimized settings."""
         try:
             # Ensure directory exists
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Create engine
+            # Create engine with optimized settings for SQLite
             db_url = f"sqlite:///{self.db_path}"
             self.engine = create_engine(
                 db_url,
-                connect_args={"check_same_thread": False},
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30,  # Increased timeout for concurrent access
+                },
                 echo=False,
+                pool_pre_ping=True,  # Enable connection health checks
             )
+            
+            # Optimize SQLite for performance
+            with self.engine.connect() as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+                conn.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, safer than OFF
+                conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+                conn.execute("PRAGMA temp_store=MEMORY")  # Store temp tables in memory
             
             # Create tables
             Base.metadata.create_all(bind=self.engine)
             
-            # Create session factory
+            # Create session factory with optimized settings
             self.SessionLocal = sessionmaker(
                 autocommit=False,
                 autoflush=False,
                 bind=self.engine,
+                expire_on_commit=False,  # Prevent object expiration
             )
             
             # Get initial session

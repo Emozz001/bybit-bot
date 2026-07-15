@@ -1,1 +1,49 @@
-Nothing should be ignored based on the provided file changes. The changes only involve source/config files (.sh files) without any build artifacts, dependencies, or temporary files that need to be ignored.
+```gitignore
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+.venv/
+venv/
+pip-log.txt
+pipenv.lock
+
+# Coverage reports
+.coverage
+htmlcov/
+.coverage.*
+.cache
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
