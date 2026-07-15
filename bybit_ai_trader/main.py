@@ -1,8 +1,8 @@
-"""
-Bybit AI Futures Trading Bot
+"""Bybit AI Futures Trading Bot.
 
-A professional, production-quality cryptocurrency futures trading bot for Bybit USDT Perpetual Futures.
-Runs locally on MacBook Air 2017 with modular architecture and comprehensive risk management.
+A professional, production-quality cryptocurrency futures trading bot 
+for Bybit USDT Perpetual Futures. Runs locally on MacBook Air 2017 
+with modular architecture and comprehensive risk management.
 
 Author: AI Assistant
 Version: 1.0.0
@@ -12,6 +12,7 @@ import asyncio
 import signal
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from core.config import Config
 from core.logger import setup_logging
@@ -21,13 +22,17 @@ from scanner.market_scanner import MarketScanner
 from dashboard.terminal import Dashboard
 from position.manager import PositionManager
 
+if TYPE_CHECKING:
+    from logging import Logger
+
 
 class TradingBot:
-    """Main trading bot orchestrator."""
+    """Main trading bot orchestrator that coordinates all components."""
 
-    def __init__(self):
-        self.config = Config.load()
-        self.logger = setup_logging(self.config)
+    def __init__(self) -> None:
+        """Initialize the trading bot with configuration."""
+        self.config: Config = Config.load()
+        self.logger: Logger = setup_logging(self.config)
         self.db_manager: DatabaseManager | None = None
         self.exchange: BybitClient | None = None
         self.scanner: MarketScanner | None = None
@@ -37,7 +42,11 @@ class TradingBot:
         self._tasks: list[asyncio.Task] = []
 
     async def initialize(self) -> bool:
-        """Initialize all components."""
+        """Initialize all bot components.
+        
+        Returns:
+            True if initialization successful, False otherwise
+        """
         try:
             self.logger.info("Initializing trading bot...")
             
@@ -64,15 +73,30 @@ class TradingBot:
             self.logger.info(f"Loaded {len(markets)} futures markets")
             
             # Initialize scanner
-            self.scanner = MarketScanner(self.config, self.exchange, self.db_manager)
+            self.scanner = MarketScanner(
+                config=self.config,
+                exchange=self.exchange,
+                db_manager=self.db_manager,
+                logger=self.logger,
+            )
             self.logger.info("Market scanner initialized")
             
             # Initialize position manager
-            self.position_manager = PositionManager(self.config, self.exchange, self.db_manager)
+            self.position_manager = PositionManager(
+                config=self.config,
+                exchange=self.exchange,
+                db_manager=self.db_manager,
+                logger=self.logger,
+            )
             self.logger.info("Position manager initialized")
             
             # Initialize dashboard
-            self.dashboard = Dashboard(self.config, self.exchange, self.scanner, self.position_manager)
+            self.dashboard = Dashboard(
+                config=self.config,
+                exchange=self.exchange,
+                scanner=self.scanner,
+                position_manager=self.position_manager,
+            )
             self.logger.info("Dashboard initialized")
             
             self.logger.info("Initialization complete")
@@ -82,34 +106,34 @@ class TradingBot:
             self.logger.error(f"Initialization failed: {e}", exc_info=True)
             return False
 
-    async def start(self):
-        """Start the trading bot."""
+    async def start(self) -> None:
+        """Start all bot components and run until shutdown."""
         try:
             # Start WebSocket streams
             ws_task = asyncio.create_task(
                 self.exchange.start_websocket_streams(),
-                name="websocket_streams"
+                name="websocket_streams",
             )
             self._tasks.append(ws_task)
             
             # Start market scanner
             scanner_task = asyncio.create_task(
                 self.scanner.run(),
-                name="market_scanner"
+                name="market_scanner",
             )
             self._tasks.append(scanner_task)
             
             # Start position manager
             position_task = asyncio.create_task(
                 self.position_manager.run(),
-                name="position_manager"
+                name="position_manager",
             )
             self._tasks.append(position_task)
             
             # Start dashboard
             dashboard_task = asyncio.create_task(
                 self.dashboard.run(),
-                name="dashboard"
+                name="dashboard",
             )
             self._tasks.append(dashboard_task)
             
@@ -122,7 +146,7 @@ class TradingBot:
             self.logger.error(f"Error in main loop: {e}", exc_info=True)
             raise
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Gracefully shutdown all components."""
         self.logger.info("Shutting down...")
         
@@ -150,14 +174,18 @@ class TradingBot:
         
         self.logger.info("Shutdown complete")
 
-    def handle_signal(self, sig):
-        """Handle shutdown signals."""
+    def handle_signal(self, sig: signal.Signals) -> None:
+        """Handle shutdown signals.
+        
+        Args:
+            sig: Signal received
+        """
         self.logger.info(f"Received signal {sig}")
         asyncio.create_task(self.shutdown())
 
 
-async def main():
-    """Main entry point."""
+async def main() -> None:
+    """Main entry point for the trading bot."""
     bot = TradingBot()
     
     # Setup signal handlers
