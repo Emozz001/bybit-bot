@@ -67,31 +67,46 @@ class PositionManager:
             self.logger.info("Position manager stopped")
 
     async def _monitor_positions(self):
-        """Monitor all open positions."""
+        """Monitor all open positions with optimized batch processing."""
         try:
             # Get current positions from exchange
             positions = await self.exchange.get_positions()
             
-            # Update internal state
+            # Update internal state in one operation
             self._positions = {pos["symbol"]: pos for pos in positions}
             
-            # Check each position for adjustments
-            for symbol, pos in self._positions.items():
-                await self._check_position(symbol, pos)
-            
-            # Save position snapshots to database
+            # Batch process positions for risk checks
             if positions:
+                position_checks = []
+                db_snapshots = []
+                
                 for pos in positions:
-                    await self.db_manager.save_position_snapshot(
-                        symbol=pos.get("symbol", ""),
-                        side=pos.get("side", ""),
-                        size=float(pos.get("size", 0)),
-                        entry_price=float(pos.get("avgPrice", 0)),
-                        mark_price=float(pos.get("markPrice", 0)),
-                        unrealized_pnl=float(pos.get("unrealisedPnl", 0)),
-                        leverage=int(pos.get("leverage", 1)),
-                        liquidation_price=float(pos.get("liqPrice", 0)),
-                    )
+                    symbol = pos["symbol"]
+                    position_checks.append(self._check_position(symbol, pos))
+                    
+                    # Prepare DB snapshot data
+                    db_snapshots.append({
+                        "symbol": symbol,
+                        "side": pos.get("side", ""),
+                        "size": float(pos.get("size", 0)),
+                        "entry_price": float(pos.get("avgPrice", 0)),
+                        "mark_price": float(pos.get("markPrice", 0)),
+                        "unrealized_pnl": float(pos.get("unrealisedPnl", 0)),
+                        "leverage": int(pos.get("leverage", 1)),
+                        "liquidation_price": float(pos.get("liqPrice", 0)),
+                    })
+                
+                # Execute all position checks in parallel
+                if position_checks:
+                    await asyncio.gather(*position_checks, return_exceptions=True)
+                
+                # Batch save to database (if supported)
+                if db_snapshots and hasattr(self.db_manager, 'save_position_snapshots_batch'):
+                    await self.db_manager.save_position_snapshots_batch(db_snapshots)
+                else:
+                    # Fallback to individual saves
+                    for snapshot in db_snapshots:
+                        await self.db_manager.save_position_snapshot(**snapshot)
             
         except Exception as e:
             if self.logger:

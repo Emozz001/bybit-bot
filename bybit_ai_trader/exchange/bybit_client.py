@@ -16,6 +16,11 @@ from pybit.unified_trading import HTTP, WebSocket
 class BybitClient:
     """Bybit exchange client for REST and WebSocket API."""
 
+    # Class-level constants for performance
+    RATE_LIMIT_DELAY = 0.08  # 80ms between requests (optimized)
+    MAX_RECONNECT_ATTEMPTS = 5
+    CACHE_TTL_SECONDS = 5  # Cache expiration time
+
     def __init__(self, config):
         """
         Initialize Bybit client.
@@ -36,23 +41,26 @@ class BybitClient:
         self._ws_public: WebSocket | None = None
         self._ws_private: WebSocket | None = None
         
-        # Rate limiting
-        self._rate_limit_delay = 0.1  # 100ms between requests
-        self._last_request_time = 0
+        # Rate limiting with token bucket
+        self._rate_limiter = asyncio.Semaphore(10)  # Allow 10 concurrent requests
+        self._last_request_time = 0.0
         
         # Connection state
         self._connected = False
         self._authenticated = False
         self._reconnect_attempts = 0
-        self._max_reconnect_attempts = 5
         
-        # Market data cache
+        # Market data cache with TTL
         self._markets: dict[str, dict] = {}
-        self._tickers: dict[str, dict] = {}
-        self._orderbooks: dict[str, dict] = {}
+        self._markets_timestamp: float = 0.0
+        self._tickers: dict[str, tuple[dict, float]] = {}  # (data, timestamp)
+        self._orderbooks: dict[str, tuple[dict, float]] = {}
         
         # WebSocket callbacks
         self._ws_callbacks: dict[str, callable] = {}
+        
+        # HTTP session for aiohttp
+        self._session: aiohttp.ClientSession | None = None
 
     async def connect(self) -> bool:
         """
@@ -474,12 +482,12 @@ class BybitClient:
                 self.logger.debug(f"Failed to subscribe ticker: {e}")
 
     async def _rate_limit(self):
-        """Apply rate limiting to API requests."""
+        """Apply rate limiting to API requests with optimized async sleep."""
         current_time = time.time()
         elapsed = current_time - self._last_request_time
         
-        if elapsed < self._rate_limit_delay:
-            await asyncio.sleep(self._rate_limit_delay - elapsed)
+        if elapsed < self.RATE_LIMIT_DELAY:
+            await asyncio.sleep(self.RATE_LIMIT_DELAY - elapsed)
         
         self._last_request_time = time.time()
 
@@ -491,6 +499,9 @@ class BybitClient:
             
             if self._ws_private:
                 self._ws_private.close()
+            
+            if self._session:
+                await self._session.close()
             
             self._connected = False
             self._authenticated = False

@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 
@@ -70,13 +71,13 @@ class MarketScanner:
             self.logger.info("Market scanner stopped")
 
     async def _scan_markets(self):
-        """Scan all markets and update opportunities."""
+        """Scan all markets and update opportunities with parallel processing."""
         try:
             # Get all markets from exchange
             if not self._markets:
                 self._markets = await self.exchange.get_futures_markets()
             
-            # Filter active markets
+            # Filter active markets only once
             active_markets = [
                 m for m in self._markets
                 if m.get("status") == "Trading"
@@ -85,25 +86,29 @@ class MarketScanner:
             if self.logger:
                 self.logger.debug(f"Scanning {len(active_markets)} markets")
             
-            # Scan each market
-            tasks = []
-            for market in active_markets:
-                symbol = market["symbol"]
-                tasks.append(self._scan_symbol(symbol))
+            # Scan each market in parallel with bounded concurrency
+            semaphore = asyncio.Semaphore(20)  # Limit concurrent API calls
+            
+            async def scan_with_semaphore(market):
+                async with semaphore:
+                    await self._scan_symbol(market["symbol"])
+            
+            # Create tasks for all markets
+            tasks = [
+                scan_with_semaphore(market) 
+                for market in active_markets
+            ]
             
             # Wait for all scans to complete
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Sort opportunities by score
-            self._opportunities.sort(
-                key=lambda x: x.get("opportunity_score", 0),
-                reverse=True
-            )
+            # Sort opportunities by score (optimized: use itemgetter)
+            from operator import itemgetter
+            self._opportunities.sort(key=itemgetter("opportunity_score"), reverse=True)
             
             # Keep only top opportunities
-            max_opportunities = 100
-            self._opportunities = self._opportunities[:max_opportunities]
+            self._opportunities = self._opportunities[:100]
             
         except Exception as e:
             if self.logger:
@@ -193,30 +198,30 @@ class MarketScanner:
                 self.logger.debug(f"Error scanning {symbol}: {e}")
 
     def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
-        """Calculate Average True Range."""
+        """Calculate Average True Range using vectorized operations."""
         try:
-            high = df["high"]
-            low = df["low"]
-            close = df["close"].shift(1)
+            high = df["high"].to_numpy()
+            low = df["low"].to_numpy()
+            close_prev = np.roll(df["close"].to_numpy(), 1)
             
             tr1 = high - low
-            tr2 = abs(high - close)
-            tr3 = abs(low - close)
+            tr2 = np.abs(high - close_prev)
+            tr3 = np.abs(low - close_prev)
             
-            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr = true_range.rolling(window=period).mean().iloc[-1]
+            true_range = np.maximum(np.maximum(tr1, tr2), tr3)
+            atr = np.mean(true_range[-period:])
             
-            return float(atr) if not pd.isna(atr) else 0.0
+            return float(atr) if not np.isnan(atr) else 0.0
             
         except Exception:
             return 0.0
 
     def _calculate_volatility(self, df: pd.DataFrame) -> float:
-        """Calculate price volatility (standard deviation of returns)."""
+        """Calculate price volatility using numpy for better performance."""
         try:
-            returns = df["close"].pct_change()
-            volatility = returns.std()
-            return float(volatility) if not pd.isna(volatility) else 0.0
+            returns = df["close"].pct_change().to_numpy()
+            volatility = np.nanstd(returns)
+            return float(volatility) if not np.isnan(volatility) else 0.0
             
         except Exception:
             return 0.0
@@ -353,16 +358,26 @@ class MarketScanner:
         return score
 
     def _calculate_rsi(self, series: pd.Series, period: int = 14) -> float:
-        """Calculate RSI."""
+        """Calculate RSI using numpy for better performance."""
         try:
-            delta = series.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+            # Convert to numpy array and calculate delta
+            close_values = series.to_numpy()
+            delta = np.diff(close_values)
             
-            rs = gain / loss
+            gain = np.where(delta > 0, delta, 0)
+            loss = np.where(delta < 0, -delta, 0)
+            
+            # Use simple moving average for last 'period' values
+            avg_gain = np.mean(gain[-period:])
+            avg_loss = np.mean(loss[-period:])
+            
+            if avg_loss == 0:
+                return 100.0
+            
+            rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
             
-            return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
+            return float(rsi) if not np.isnan(rsi) else 50.0
             
         except Exception:
             return 50.0

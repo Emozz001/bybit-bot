@@ -50,20 +50,30 @@ class Dashboard:
         self._stats_data: dict | None = None
 
     async def run(self):
-        """Main dashboard loop."""
+        """Main dashboard loop with optimized rendering."""
         self._running = True
         
         if self.logger:
             self.logger.info("Dashboard started")
         
-        # Clear screen
+        # Clear screen once at startup
         self._console.clear()
         
         while self._running:
             try:
-                await self._update_data()
+                # Update data and render in parallel
+                update_task = asyncio.create_task(self._update_data())
+                
+                # Small delay to allow data update to progress
+                await asyncio.sleep(0.1)
+                
                 self._render()
-                await asyncio.sleep(self._refresh_rate)
+                
+                # Wait for update to complete
+                await update_task
+                
+                # Sleep for remaining refresh interval
+                await asyncio.sleep(max(0, self._refresh_rate - 0.1))
                 
             except asyncio.CancelledError:
                 break
@@ -80,29 +90,58 @@ class Dashboard:
             self.logger.info("Dashboard stopped")
 
     async def _update_data(self):
-        """Update dashboard data."""
+        """Update dashboard data with parallel fetching."""
         try:
-            # Get balance
+            # Fetch all data in parallel
+            tasks = []
+            
             if self.exchange:
-                self._balance_data = await self.exchange.get_account_balance()
+                tasks.append(self._fetch_balance())
             
-            # Get positions
             if self.position_manager:
-                self._positions_data = await self.position_manager.get_positions()
+                tasks.append(self._fetch_positions())
+                tasks.append(self._fetch_statistics())
             
-            # Get opportunities
             if self.scanner:
-                self._opportunities_data = self.scanner.get_opportunities(
-                    limit=self.config.dashboard.top_opportunities_count
-                )
+                tasks.append(self._fetch_opportunities())
             
-            # Get statistics
-            if self.position_manager:
-                self._stats_data = await self.position_manager.get_statistics()
+            # Execute all fetches concurrently
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             
         except Exception as e:
             if self.logger:
                 self.logger.debug(f"Error updating dashboard data: {e}")
+
+    async def _fetch_balance(self):
+        """Fetch balance data."""
+        try:
+            self._balance_data = await self.exchange.get_account_balance()
+        except Exception:
+            pass
+
+    async def _fetch_positions(self):
+        """Fetch positions data."""
+        try:
+            self._positions_data = await self.position_manager.get_positions()
+        except Exception:
+            pass
+
+    async def _fetch_opportunities(self):
+        """Fetch opportunities data."""
+        try:
+            self._opportunities_data = self.scanner.get_opportunities(
+                limit=self.config.dashboard.top_opportunities_count
+            )
+        except Exception:
+            pass
+
+    async def _fetch_statistics(self):
+        """Fetch statistics data."""
+        try:
+            self._stats_data = await self.position_manager.get_statistics()
+        except Exception:
+            pass
 
     def _render(self):
         """Render the dashboard."""
