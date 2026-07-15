@@ -1,5 +1,4 @@
-"""
-Configuration management for the trading bot.
+"""Configuration management for the trading bot.
 
 Loads configuration from .env and config/settings.yaml files.
 Uses Pydantic for validation and type safety.
@@ -16,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class TradingConfig(BaseModel):
     """Trading configuration."""
-    
+
     mode: str = Field(default="paper", description="Trading mode: paper or live")
     symbols: str | list[str] = Field(default="all", description="Symbols to trade")
     opportunity_threshold: int = Field(default=90, ge=0, le=100)
@@ -26,7 +25,7 @@ class TradingConfig(BaseModel):
 
 class RiskConfig(BaseModel):
     """Risk management configuration."""
-    
+
     risk_per_trade: float = Field(default=1.0, gt=0, le=100)
     daily_loss_limit: float = Field(default=5.0, gt=0)
     weekly_loss_limit: float = Field(default=10.0, gt=0)
@@ -36,7 +35,7 @@ class RiskConfig(BaseModel):
 
 class IndicatorConfig(BaseModel):
     """Technical indicator configuration."""
-    
+
     timeframes: list[str] = Field(
         default=["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"]
     )
@@ -52,7 +51,7 @@ class IndicatorConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     """Order execution configuration."""
-    
+
     default_sl_type: str = Field(default="stop_loss")
     default_tp_type: str = Field(default="take_profit")
     use_trailing_stop: bool = Field(default=True)
@@ -61,7 +60,7 @@ class ExecutionConfig(BaseModel):
 
 class DashboardConfig(BaseModel):
     """Dashboard configuration."""
-    
+
     refresh_rate: float = Field(default=1.0, gt=0)
     show_all_symbols: bool = Field(default=False)
     top_opportunities_count: int = Field(default=10, gt=0)
@@ -69,7 +68,7 @@ class DashboardConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     """Logging configuration."""
-    
+
     level: str = Field(default="INFO")
     save_to_file: bool = Field(default=True)
     rotation_size_mb: int = Field(default=10, gt=0)
@@ -78,7 +77,7 @@ class LoggingConfig(BaseModel):
 
 class TelegramConfig(BaseModel):
     """Telegram notification configuration."""
-    
+
     enabled: bool = Field(default=False)
     notify_on_trade: bool = Field(default=True)
     notify_on_error: bool = Field(default=True)
@@ -89,7 +88,7 @@ class TelegramConfig(BaseModel):
 
 class ExchangeConfig(BaseModel):
     """Exchange API configuration."""
-    
+
     api_key: str = Field(default="")
     api_secret: str = Field(default="")
     testnet: bool = Field(default=True)
@@ -97,13 +96,13 @@ class ExchangeConfig(BaseModel):
 
 class DatabaseConfig(BaseModel):
     """Database configuration."""
-    
+
     path: str = Field(default="database/trading.db")
 
 
 class Config(BaseModel):
     """Main configuration class."""
-    
+
     trading: TradingConfig = Field(default_factory=TradingConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     indicators: IndicatorConfig = Field(default_factory=IndicatorConfig)
@@ -113,89 +112,55 @@ class Config(BaseModel):
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     exchange: ExchangeConfig = Field(default_factory=ExchangeConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    
+
     @classmethod
     def load(cls, config_path: str = "config/settings.yaml") -> "Config":
-        """Load configuration from files and environment variables."""
-        
+        """Load configuration from files and environment variables.
+
+        Args:
+            config_path: Path to YAML configuration file
+
+        Returns:
+            Config object with merged settings
+        """
         # Load environment variables
         env_path = Path(".env")
         if env_path.exists():
             load_dotenv(env_path)
-        
+
         # Load YAML config
         config_data: dict[str, Any] = {}
         yaml_path = Path(config_path)
         if yaml_path.exists():
             with open(yaml_path, "r") as f:
                 config_data = yaml.safe_load(f) or {}
-        
+
         # Build configuration from environment and YAML
         exchange_config = {
             "api_key": os.getenv("BYBIT_API_KEY", ""),
             "api_secret": os.getenv("BYBIT_API_SECRET", ""),
             "testnet": os.getenv("BYBIT_TESTNET", "true").lower() == "true",
         }
-        
+
         telegram_config = {
             "enabled": os.getenv("TELEGRAM_BOT_TOKEN") is not None,
             "bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
             "chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
         }
-        
+
         database_config = {
             "path": os.getenv("DATABASE_PATH", "database/trading.db"),
         }
-        
+
         # Merge with YAML data
-        if "trading" in config_data:
-            trading_data = config_data["trading"]
-        else:
-            trading_data = {}
-        
-        if "risk" in config_data:
-            risk_data = config_data["risk"]
-        else:
-            risk_data = {}
-        
-        if "indicators" in config_data:
-            indicator_data = config_data["indicators"]
-        else:
-            indicator_data = {}
-        
-        if "execution" in config_data:
-            execution_data = config_data["execution"]
-        else:
-            execution_data = {}
-        
-        if "dashboard" in config_data:
-            dashboard_data = config_data["dashboard"]
-        else:
-            dashboard_data = {}
-        
-        if "logging" in config_data:
-            logging_data = config_data["logging"]
-        else:
-            logging_data = {}
-        
-        if "telegram" in config_data:
-            telegram_data = {**telegram_config, **config_data["telegram"]}
-        else:
-            telegram_data = telegram_config
-        
-        if "database" in config_data:
-            database_data = {**database_config, **config_data["database"]}
-        else:
-            database_data = database_config
-        
         return cls(
-            trading=TradingConfig(**trading_data),
-            risk=RiskConfig(**risk_data),
-            indicators=IndicatorConfig(**indicator_data),
-            execution=ExecutionConfig(**execution_data),
-            dashboard=DashboardConfig(**dashboard_data),
-            logging=LoggingConfig(**logging_data),
-            telegram=TelegramConfig(**telegram_data),
+            trading=TradingConfig(**config_data.get("trading", {})),
+            risk=RiskConfig(**config_data.get("risk", {})),
+            indicators=IndicatorConfig(**config_data.get("indicators", {})),
+            execution=ExecutionConfig(**config_data.get("execution", {})),
+            dashboard=DashboardConfig(**config_data.get("dashboard", {})),
+            logging=LoggingConfig(**config_data.get("logging", {})),
+            telegram=TelegramConfig(**{**telegram_config, **config_data.get("telegram", {})}),
             exchange=ExchangeConfig(**exchange_config),
-            database=DatabaseConfig(**database_data),
+            database=DatabaseConfig(**{**database_config, **config_data.get("database", {})}),
         )
